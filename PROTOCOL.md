@@ -1,4 +1,5 @@
 # nixel wire protocol
+![CI](https://github.com/hshei/nixel/actions/workflows/ci.yml/badge.svg)
 
 The agent reports each health-check result to the server over a TCP connection
 using a length-prefixed binary frame. This document specifies that frame so the
@@ -82,7 +83,7 @@ server tell "the service crashed" from "the host is gone."
 A result for `example.com:443` that is up with 57.49 ms latency serializes to a
 74-byte JSON payload, framed as:
 
-```
+``` txt
 00 00 00 4A                                    # length = 74 (0x4A), big-endian
 7B 22 68 6F 73 74 22 3A ...                    # {"host": ... }  (74 bytes)
 ```

@@ -105,7 +105,3 @@ cd dashboard && node server.js     # http://localhost:3000
 Working end-to-end: agent → protocol → server → SQLite → dashboard.
 Roadmap: persistent agent connection with reconnect/backoff, per-tenant
 authentication, and a config-driven multi-target check loop.
-
-## License
-
-MIT

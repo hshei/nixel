@@ -11,5 +11,7 @@ nixel-server: $(SERVER_SRC)
 
 
 all: nixel nixel-server
+test: all
+	bash tests/smoke.sh
 clean:
 	rm -f nixel nixel-server
