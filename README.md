@@ -1,4 +1,5 @@
 # nixel
+![CI](https://github.com/hshei/nixel/actions/workflows/ci.yml/badge.svg)
 
 A lightweight service-monitoring system written in C. A tiny agent runs health
 checks against your services and streams results over a custom binary protocol
