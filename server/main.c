@@ -25,7 +25,6 @@ static int recv_all(int fd, void *buf, size_t len) {
 }
 
 int main(void) {
-    // --- boilerplate: listening socket (you've done this in chatserver) ---
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd < 0) { perror("socket"); return 1; }
     
@@ -35,7 +34,7 @@ int main(void) {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);   // listen on all interfaces
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);   
     addr.sin_port        = htons(PORT);
     
     if (bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
@@ -52,7 +51,6 @@ int main(void) {
         exit(1);
     }
     
-    // --- accept loop: one client at a time (no concurrency yet) ---
     for (;;) {
         int client_fd = accept(listen_fd, NULL, NULL);
         if (client_fd < 0) { perror("accept"); continue; }
@@ -67,13 +65,14 @@ int main(void) {
 
         // Bound-check
         if (length == 0 || length > MAX_MSG) {
-            printf("Error\n");
+            fprintf(stderr, "rejected bad length: %u\n", length);           
             close(client_fd);
             continue;
         }
 
         // recv_all payload
-        char *payload = calloc(length + 1, sizeof(char));
+        char *payload = calloc(length + 1, 1);
+        if (payload == NULL) { close(client_fd); continue; }
         if (recv_all(client_fd, payload, length) != 0) {
            free(payload); close(client_fd); continue;
         }
@@ -83,11 +82,12 @@ int main(void) {
         if (parse_result(payload, &pr) == 0) {
             printf("parsed: host=%s port=%s status=%s latency=%.2f ms\n",
                 pr.host, pr.port, pr.status, pr.latency_ms);
+            if (store_insert(db, &pr) != 0)
+                fprintf(stderr, "insert failed\n");
         } else {
             fprintf(stderr, "bad message, ignored\n");
         }
         free(payload);
-
         
         // insert into database
         if (store_insert(db, &pr) != 0) fprintf(stderr, "insert failed\n");
