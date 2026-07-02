@@ -7,7 +7,7 @@ web dashboard shows live status.
 
 Built from raw sockets — no monitoring framework, no HTTP client library, no ORM.
 
-![Dashboard](docs/dashboard.png)
+![Dashboard](docs/dashboard.jpg)
 
 ## Why
 
@@ -19,7 +19,7 @@ hosts and edge gateways where a heavyweight collector doesn't fit.
 | | nixel agent | node_exporter |
 |-----------------|-------------|---------------|
 | Binary size     | **34 KB**   | 13 MB         |
-| RSS             | ~8.5 MB\*   | ~15.8 MB\*\* |
+| RSS             | ~8.5 MB\*   | ~15.8 MB\*\*  |
 | Idle CPU        | ~0%         | ~0%           |
 | Runtime deps    | none        | none          |
 | Language        | C           | Go            |
@@ -34,7 +34,7 @@ compares agent footprint, not feature parity.
 
 ## Architecture
 
-```
+``` txt
   target service                        your host
   ┌────────────┐   TCP health check     ┌──────────────────┐
   │ example.com│◀────────────────────── │  agent (C)       │
@@ -81,7 +81,7 @@ inserts via prepared statements (no SQL injection).
 
 ## Build
 
-```
+``` bash
 make all          # builds ./nixel (agent) and ./nixel-server
 ```
 
@@ -89,7 +89,7 @@ Requires a C compiler and SQLite (`-lsqlite3`).
 
 ## Run
 
-```
+``` bash
 # 1. start the ingest server (listens on :9000, writes nixel.db)
 ./nixel-server
 
