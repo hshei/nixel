@@ -1,4 +1,3 @@
-// src/server.c
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -89,9 +88,6 @@ int main(void) {
         }
         free(payload);
         
-        // insert into database
-        if (store_insert(db, &pr) != 0) fprintf(stderr, "insert failed\n");
-
         // shutdown
         close(client_fd);
     }
