@@ -112,16 +112,20 @@ int report_result(const char *server, const char *port, check_result_t *r){
         close(fd);
         fd = -1;
     }    
-    if (fd == -1) return -1;   
 
     freeaddrinfo(res);
+    if (fd == -1) return -1;   
 
-    // frame: 4-byte legnth prefix
+
+    // frame: 4-byte length prefix
     uint32_t net_len = htonl(json_len);
     
     // sending the length bytes, then the payload
-    send_all(fd, &net_len, sizeof(net_len));
-    send_all(fd, json, json_len);
+    if (send_all(fd, &net_len, sizeof(net_len)) != 0) { close(fd); return -1; }
+    if (send_all(fd, json, (size_t)json_len)   != 0) { close(fd); return -1; }
+    close(fd);
+    return 0;
+
 
     close(fd);
     return 0;
