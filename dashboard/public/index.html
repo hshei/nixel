@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>nixel — status</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    .pill { padding: .2rem .6rem; border-radius: 1rem; color: #fff; font-size: .85rem; }
+    .up { background: #16a34a; } .down { background: #dc2626; } .other { background: #999; }
+    .muted { color: #888; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Service status</h1>
+    <p class="muted" id="updated"></p>
+    <table>
+      <thead><tr><th>Host</th><th>Port</th><th>Status</th><th>Latency</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+  <script>
+    async function load() {
+      const rows = await (await fetch('/api/status')).json();
+      document.getElementById('rows').innerHTML = rows.map(r => {
+        const cls = r.status === 'up' ? 'up' : r.status.startsWith('down') ? 'down' : 'other';
+        return `<tr>
+          <td>${r.host}</td><td>${r.port}</td>
+          <td><span class="pill ${cls}">${r.status}</span></td>
+          <td>${r.latency_ms.toFixed(1)} ms</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    }
+    load();
+    setInterval(load, 5000);   // auto-refresh every 5s
+  </script>
+</body>
+</html>

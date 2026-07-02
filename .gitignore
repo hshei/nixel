@@ -1,0 +1,12 @@
+# build artifacts
+nixel
+nixel-server
+*.o
+*.db
+
+# node
+dashboard/node_modules/
+dashboard/package-lock.json
+
+# os
+.DS_Store
