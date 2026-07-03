@@ -83,13 +83,3 @@ void check_client(check_result_t *r, int timeout_sec){
                 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
 
 }
-
-
-void print_status_msg(check_status_t status, double ms){
-    switch (status) {
-        case CHECK_UP:           printf("UP - %.2f ms\n", ms); break;
-        case CHECK_DOWN_REFUSED: printf("DOWN (refused) - %.2f ms\n", ms); break;
-        case CHECK_DOWN_TIMEOUT: printf("DOWN (timeout) - %.2f ms\n", ms); break;
-        case CHECK_ERROR:        printf("ERROR - %.2f ms\n", ms); break;
-    }
-}

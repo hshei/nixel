@@ -63,8 +63,9 @@ static int send_all(int fd, void *buf, size_t len) {
     return 0;
 }
 
-static const char *status_to_str(check_status_t s) {
+char *status_to_str(check_status_t s) {
     switch (s) {
+        case CHECK_UNKNOWN:      return "unknown";
         case CHECK_UP:           return "up";
         case CHECK_DOWN_REFUSED: return "down_refused";
         case CHECK_DOWN_TIMEOUT: return "down_timeout";
@@ -73,7 +74,7 @@ static const char *status_to_str(check_status_t s) {
     return "unknown";
 }
 
-int build_result_json(check_result_t *r, char *json_out, size_t out_size){
+int build_result_json(const check_result_t *r, char *json_out, size_t out_size){
     char host_esc[256];
     char port_esc[64];
     if (json_escape(host_esc, sizeof(host_esc), r->host) < 0) return -1;  // dst, size, src
@@ -90,13 +91,8 @@ int build_result_json(check_result_t *r, char *json_out, size_t out_size){
     return n;  // number of bytes written (excluding NUL)
 }
 
-int report_result(const char *server, const char *port, check_result_t *r){
-    // building the json result
-    char json[2048];
-    int json_len = build_result_json(r, json, sizeof(json));
-    
-    if (json_len < 0) return -1;
-    // connecting to server
+int connect_to_server(const char *server, const char *port){
+     // connecting to server
     struct addrinfo hints, *res, *rp;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family   = AF_UNSPEC;    /* IPv4 or IPv6 */
@@ -116,17 +112,22 @@ int report_result(const char *server, const char *port, check_result_t *r){
     freeaddrinfo(res);
     if (fd == -1) return -1;   
 
+    return fd;
+}
+
+int send_result(int server_fd, const check_result_t *r){
+    // building the json result
+    char json[2048];
+    int json_len = build_result_json(r, json, sizeof(json));
+    
+    if (json_len < 0) return -1;
 
     // frame: 4-byte length prefix
     uint32_t net_len = htonl(json_len);
     
     // sending the length bytes, then the payload
-    if (send_all(fd, &net_len, sizeof(net_len)) != 0) { close(fd); return -1; }
-    if (send_all(fd, json, (size_t)json_len)   != 0) { close(fd); return -1; }
-    close(fd);
-    return 0;
+    if (send_all(server_fd, &net_len, sizeof(net_len)) != 0) return -1; 
+    if (send_all(server_fd, json, (size_t)json_len)   != 0) return -1;
 
-
-    close(fd);
     return 0;
 }

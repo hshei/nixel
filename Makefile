@@ -1,7 +1,7 @@
 CC = cc
 CFLAGS = -Wall -Wextra -Wpedantic -Iinclude
 
-AGENT_SRC = agent/main.c agent/check.c agent/report.c
+AGENT_SRC = agent/main.c agent/check.c agent/report.c agent/config.c
 nixel: $(AGENT_SRC)
 	$(CC) $(CFLAGS) -o nixel $(AGENT_SRC)
 

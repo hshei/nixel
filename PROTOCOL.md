@@ -1,5 +1,4 @@
 # nixel wire protocol
-![CI](https://github.com/hshei/nixel/actions/workflows/ci.yml/badge.svg)
 
 The agent reports each health-check result to the server over a TCP connection
 using a length-prefixed binary frame. This document specifies that frame so the
