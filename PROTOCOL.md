@@ -8,8 +8,8 @@ agent and server (or any future client) agree on the exact bytes on the wire.
 
 Every message is a 4-byte length prefix followed by a JSON payload:
 
-```
- 0                   1                   2                   3
+``` txt
+0                   1                   2                   3
  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 +---------------------------------------------------------------+
 |                     length (uint32, big-endian)               |
@@ -38,7 +38,7 @@ and the next begins.
 
 The JSON payload is a single object describing one health-check result:
 
-```json
+```
 {
   "host": "example.com",
   "port": "443",
@@ -47,21 +47,21 @@ The JSON payload is a single object describing one health-check result:
 }
 ```
 
-| Field        | Type   | Description                                            |
-|--------------|--------|--------------------------------------------------------|
-| `host`       | string | The checked target's hostname or IP.                   |
-| `port`       | string | The checked target's port.                             |
-| `status`     | string | Check outcome. One of the values below.                |
+| Field | Type | Description |
+| --- | --- | --- |
+| `host` | string | The checked target's hostname or IP. |
+| `port` | string | The checked target's port. |
+| `status` | string | Check outcome. One of the values below. |
 | `latency_ms` | number | Time to establish (or fail) the TCP connection, in ms. |
 
 ### Status values
 
-| Value          | Meaning                                                              |
-|----------------|----------------------------------------------------------------------|
-| `up`           | TCP connection established within the timeout.                       |
-| `down_refused` | Host reachable but the port refused the connection (TCP RST).        |
-| `down_timeout` | No response within the timeout — host or network unreachable.        |
-| `error`        | Resolution or socket error before a connection could be attempted.   |
+| Value | Meaning |
+| --- | --- |
+| `up` | TCP connection established within the timeout. |
+| `down_refused` | Host reachable but the port refused the connection (TCP RST). |
+| `down_timeout` | No response within the timeout — host or network unreachable. |
+| `error` | Resolution or socket error before a connection could be attempted. |
 
 `down_refused` fails almost instantly (the host actively rejects); `down_timeout`
 takes the full timeout (packets go unanswered). Distinguishing the two lets the
@@ -75,7 +75,15 @@ server tell "the service crashed" from "the host is gone."
   malformed or hostile prefix from forcing a huge allocation.
 - The payload is parsed as JSON; malformed JSON, missing fields, or fields of
   the wrong type are rejected without affecting the server.
-- One frame is sent per connection in the current implementation.
+- An agent holds one long-lived connection and streams many frames over it, one
+  health-check result per frame. The server decodes frames incrementally — a
+  single `read` may deliver a partial prefix, a partial payload, or several
+  frames at once — keeping per-connection state so boundaries are always
+  reconstructed correctly.
+- The server runs a `poll()`-based event loop and handles many agent connections
+  concurrently. Each connection has its own decode state, so a slow, stalled, or
+  misbehaving agent never blocks or corrupts the others; a protocol violation
+  drops only that one connection.
 
 ## Example
 

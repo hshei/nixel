@@ -58,7 +58,7 @@ int main(void) {
         perror("bind"); return 1;
     }
     if (listen(listen_fd, 16) < 0) { perror("listen"); return 1; }
-    
+    set_nonblocking(listen_fd);    
     printf("nixel-server listening on port %d\n", PORT);
     
     // Polling different agents
@@ -88,8 +88,7 @@ int main(void) {
             perror("poll");
             break;
         }
-
-           /* --- (A) listener slot: a new agent is knocking --- */
+         /* --- (A) listener slot: a new agent is knocking --- */
         if (fds[0].revents & POLLIN) {
             for (;;) {                            /* drain ALL pending connections */
                 int client_fd = accept(listen_fd, NULL, NULL);
@@ -118,11 +117,10 @@ int main(void) {
             }
         }
 
-  /* --- (B) agent slots: bytes arrived, or the peer hung up --- */
+        /* --- (B) agent slots: bytes arrived, or the peer hung up --- */
         for (int i = 1; i < MAX_CONNS; i++) {
             if (fds[i].fd == -1) continue;        /* empty slot */
             if (fds[i].revents == 0) continue;    /* nothing happened on this one */
-            fprintf(stderr, "activity on slot %d fd %d revents=0x%x\n", i, fds[i].fd, fds[i].revents);
             int drop = 0;
 
             if (fds[i].revents & POLLIN) {
@@ -136,7 +134,7 @@ int main(void) {
                         }
                         continue;                 /* maybe more buffered; read again */
                     }
-                    if (n == 0) { fprintf(stderr, "EOF on fd %d -> drop\n", fds[i].fd); drop = 1; break; }
+                    if (n == 0) { drop = 1; break; }
                     if (errno == EAGAIN || errno == EWOULDBLOCK) break;  /* drained */
                     if (errno == EINTR) continue;
                     drop = 1; break;              /* real read error */
