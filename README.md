@@ -14,13 +14,13 @@ Built from raw sockets — no monitoring framework, no HTTP client library, no O
 ## Why
 
 Most monitoring agents (Datadog, node_exporter, Vector) are built on Go, Python,
-or Node and ship as multi-megabyte binaries. nixel's agent is a **34 KB** static
+or Node and ship as multi-megabyte binaries. nixel's agent is a **~50 KB** static
 C binary with zero runtime dependencies — small enough to drop onto constrained
 hosts and edge gateways where a heavyweight collector doesn't fit.
 
 | | nixel agent | node_exporter |
 | --- | --- | --- |
-| Binary size | **34 KB** | 13 MB |
+| Binary size | **~50 KB** | 13 MB |
 | RSS | ~8.5 MB* | ~15.8 MB** |
 | Idle CPU | ~0% | ~0% |
 | Runtime deps | none | none |
@@ -31,7 +31,8 @@ binary size stripped for nixel. node_exporter collects 100+ system metrics
 via a pull-based HTTP endpoint; nixel runs outbound TCP health checks — this
 compares agent footprint, not feature parity.
 
-*nixel RSS is peak resident size from a single one-shot run (`/usr/bin/time -l`).
+*nixel RSS is peak resident size of the running agent daemon (`/usr/bin/time -l`),
+connected to the server and running its check loop.
 **node_exporter RSS is steady-state resident size while idle (`ps`).
 
 nixel is self-hosted: you run the server and dashboard on your own box and point
@@ -118,7 +119,7 @@ under `leaks`, including with multiple agents connected and disconnecting.
 
 ## Build
 
-``` bash
+``` txt
 make all          # builds ./nixel (agent) and ./nixel-server
 ```
 
@@ -126,7 +127,7 @@ Requires a C compiler and SQLite (`-lsqlite3`).
 
 ## Run
 
-``` bash
+``` txt
 # 1. start the ingest server (listens on :9000, writes nixel.db)
 ./nixel-server
 
@@ -149,4 +150,5 @@ persistent connection with reconnect/backoff → `poll()`-based multi-client
 server → SQLite → dashboard. The server handles many agents concurrently, each
 streaming results over its own long-lived connection.
 
-Roadmap: richer check types (HTTP status, not just TCP connect).
+Roadmap: an optional shared token so only trusted agents can report, and
+richer check types (HTTP status, not just TCP connect).
