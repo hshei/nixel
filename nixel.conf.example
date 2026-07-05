@@ -1,0 +1,11 @@
+# nixel.conf — copy this to nixel.conf and edit for your setup.
+# Lines starting with '#' are comments. Blank lines are ignored.
+
+# How often (seconds) the agent runs a full pass over all targets.
+interval 10
+
+# One target per line:  <host> <port>
+# The agent does an outbound TCP health check against each.
+example.com     443
+localhost       9000
+1.1.1.1         53

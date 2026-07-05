@@ -1,18 +1,22 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <signal.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <netinet/in.h>
+#include <sys/fcntl.h>
 #include <sqlite3.h>
 
 #include "server.h"
 
 #define PORT 9000
-#define MAX_MSG (64 * 1024)   // reject anything larger 
+#define MAX_CONNS 64
 
 static volatile sig_atomic_t running = 1;   
 
@@ -21,21 +25,22 @@ static void handle_signal(int sig) {
     running = 0;             
 }
 
-static int recv_all(int fd, void *buf, size_t len) {
-    size_t total = 0;
-    char *p = buf;
-    while (total < len) {
-        ssize_t n = recv(fd, p + total, len - total, 0);
-        if (n <= 0) return -1;
-        total += (size_t)n;
-    }
-    return 0;
+static int set_nonblocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) return -1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 int main(void) {
     // same as agent/main.c
-    signal(SIGINT,  handle_signal);
-    signal(SIGTERM, handle_signal);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_signal;
+    sa.sa_flags   = 0;              /* NO SA_RESTART -> poll() returns EINTR on signal */
+    sigaction(SIGINT,  &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+    // never die on a dead socket
+    signal(SIGPIPE, SIG_IGN);
 
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd < 0) { perror("socket"); return 1; }
@@ -56,62 +61,108 @@ int main(void) {
     
     printf("nixel-server listening on port %d\n", PORT);
     
-    sqlite3 *db;
+    // Polling different agents
+    struct pollfd fds[MAX_CONNS];
+    conn_t conns[MAX_CONNS];
+
+    for (int i = 0; i < MAX_CONNS; i++) {
+        fds[i].fd = -1;                    /* -1 tells poll() to skip this slot */
+        fds[i].events = 0;
+        conns[i].fd = -1;
+        memset(&conns[i], 0, sizeof(conns[i]));   // payload = NULL, all counters 0
+    }
+    fds[0].fd     = listen_fd;
+    fds[0].events = POLLIN;    
+
     // opening the database
+    sqlite3 *db;
     if (store_open("nixel.db", &db) != 0){
         fprintf(stderr, "fatal: could not open database\n");
         exit(1);
     }
     
-        while (running) {
-            int client_fd = accept(listen_fd, NULL, NULL);
-            if (client_fd < 0){
-                if (errno == EINTR) continue;   // interrupted by signal → loop, while(running) exits
-                perror("accept");
-                continue;
-            }
-
-            // read frames from THIS client until it disconnects
-            for (;;) {
-                // recv 4 bytes length
-                uint32_t net_length;
-                if (recv_all(client_fd, &net_length, sizeof(net_length)) != 0)
-                    break;                         // client closed → done with this client
-                uint32_t length = ntohl(net_length);
-
-                // bound-check
-                if (length == 0 || length > MAX_MSG) {
-                    fprintf(stderr, "rejected bad length: %u\n", length);
-                    break;                         // protocol violation → drop the connection
-                }
-
-                // recv payload
-                char *payload = calloc(length + 1, 1);
-                if (payload == NULL) break;
-                if (recv_all(client_fd, payload, length) != 0) {
-                    free(payload);
-                    break;                         // client closed mid-frame
-                }
-
-                // parse + store
-                parsed_result_t pr;
-                if (parse_result(payload, &pr) == 0) {
-                    printf("parsed: host=%s port=%s status=%s latency=%.2f ms\n",
-                        pr.host, pr.port, pr.status, pr.latency_ms);
-                    if (store_insert(db, &pr) != 0)
-                        fprintf(stderr, "insert failed\n");
-                } else {
-                    fprintf(stderr, "bad message, ignored\n");
-                }
-                free(payload);
-                // loop back up: read the NEXT frame from the same client
-            }
-
-            close(client_fd);                      // only after the client disconnects
+    while (running) {
+        int ready = poll(fds, MAX_CONNS, -1);   /* -1 = block until something happens */        
+        if (ready < 0) {
+            if (errno == EINTR) continue;        /* a signal woke us -> re-check running */
+            perror("poll");
+            break;
         }
 
-    store_close(db);
-    close(listen_fd);
+           /* --- (A) listener slot: a new agent is knocking --- */
+        if (fds[0].revents & POLLIN) {
+            for (;;) {                            /* drain ALL pending connections */
+                int client_fd = accept(listen_fd, NULL, NULL);
+                if (client_fd < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) break;  /* no more waiting */
+                    if (errno == EINTR) continue;
+                    perror("accept");
+                    break;
+                }
+
+                /* find a free slot (skip 0, that's the listener) */
+                int slot = -1;
+                for (int i = 1; i < MAX_CONNS; i++) {
+                    if (fds[i].fd == -1) { slot = i; break; }
+                }
+                if (slot == -1) {                 /* table full -> refuse politely */
+                    close(client_fd);
+                    continue;
+                }
+
+                set_nonblocking(client_fd);
+                fds[slot].fd      = client_fd;
+                fds[slot].events  = POLLIN;
+                conns[slot].fd    = client_fd;
+                conn_reset(&conns[slot]);         /* arm the decoder for this agent */
+            }
+        }
+
+  /* --- (B) agent slots: bytes arrived, or the peer hung up --- */
+        for (int i = 1; i < MAX_CONNS; i++) {
+            if (fds[i].fd == -1) continue;        /* empty slot */
+            if (fds[i].revents == 0) continue;    /* nothing happened on this one */
+            fprintf(stderr, "activity on slot %d fd %d revents=0x%x\n", i, fds[i].fd, fds[i].revents);
+            int drop = 0;
+
+            if (fds[i].revents & POLLIN) {
+                uint8_t buf[4096];
+                for (;;) {                        /* drain everything available now */
+                    ssize_t n = read(fds[i].fd, buf, sizeof(buf));
+                    if (n > 0) {
+                        if (conn_feed(&conns[i], buf, (size_t)n, db) != 0) {
+                            drop = 1;             /* protocol violation -> drop */
+                            break;
+                        }
+                        continue;                 /* maybe more buffered; read again */
+                    }
+                    if (n == 0) { fprintf(stderr, "EOF on fd %d -> drop\n", fds[i].fd); drop = 1; break; }
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) break;  /* drained */
+                    if (errno == EINTR) continue;
+                    drop = 1; break;              /* real read error */
+                }
+            }
+
+            /* POLLERR/POLLHUP/POLLNVAL also mean "this socket is done" */
+            if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+                drop = 1;
+
+            if (drop) {
+                close(fds[i].fd);
+                fds[i].fd   = -1;                 /* free the slot for reuse */
+                conn_reset(&conns[i]);            /* frees any half-built payload */
+                conns[i].fd = -1;
+            }
+        }
+    }
+
+    /* graceful shutdown: close every live agent, then the listener */
+    for (int i = 1; i < MAX_CONNS; i++) {
+        if (fds[i].fd != -1) {
+            close(fds[i].fd);
+            conn_reset(&conns[i]);                /* free buffers -> zero leaks */
+        }
+    }
 
     return 0;
 }
